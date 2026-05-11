@@ -5,7 +5,7 @@
 #   sudo bash deploy/install.sh
 set -euo pipefail
 
-REPO_URL="${REPO_URL:-https://github.com/DeFcon1/bot_discord_alternance.git}"
+REPO_URL="${REPO_URL:-https://github.com/StandFast1/bot_discord_alternance.git}"
 APP_DIR="/opt/alternance-bot"
 DATA_DIR="/var/lib/alternance-bot"
 ENV_DIR="/etc/alternance-bot"

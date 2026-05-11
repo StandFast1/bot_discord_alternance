@@ -41,7 +41,7 @@ deploy/
 Sur ton VPS Debian/Ubuntu en root :
 
 ```bash
-git clone https://github.com/DeFcon1/bot_discord_alternance.git /tmp/alt
+git clone https://github.com/StandFast1/bot_discord_alternance.git /tmp/alt
 sudo bash /tmp/alt/deploy/install.sh
 ```
 
