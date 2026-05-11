@@ -1,0 +1,32 @@
+[Unit]
+Description=Discord bot alternance cyber
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=alternance
+Group=alternance
+WorkingDirectory=/opt/alternance-bot
+EnvironmentFile=/etc/alternance-bot/env
+ExecStart=/opt/alternance-bot/.venv/bin/python -m src.main
+Restart=on-failure
+RestartSec=10s
+TimeoutStopSec=20s
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+ReadWritePaths=/var/lib/alternance-bot
+
+[Install]
+WantedBy=multi-user.target

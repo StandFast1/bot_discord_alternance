@@ -1,0 +1,76 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Sync code to VPS
+        run: |
+          ssh -i ~/.ssh/id_ed25519 \
+            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            'sudo -n test -d /opt/alternance-bot || { echo "Run deploy/install.sh on the VPS first"; exit 1; }'
+
+          ssh -i ~/.ssh/id_ed25519 \
+            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            'sudo -n git -C /opt/alternance-bot fetch --all --quiet && \
+             sudo -n git -C /opt/alternance-bot reset --hard origin/main --quiet && \
+             sudo -n /opt/alternance-bot/.venv/bin/pip install -r /opt/alternance-bot/requirements.txt --quiet'
+
+      - name: Inject secrets into systemd EnvironmentFile
+        env:
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          DISCORD_GUILD_ID: ${{ secrets.DISCORD_GUILD_ID }}
+          DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
+          DISCORD_USER_ID: ${{ secrets.DISCORD_USER_ID }}
+          FRANCE_TRAVAIL_CLIENT_ID: ${{ secrets.FRANCE_TRAVAIL_CLIENT_ID }}
+          FRANCE_TRAVAIL_CLIENT_SECRET: ${{ secrets.FRANCE_TRAVAIL_CLIENT_SECRET }}
+        run: |
+          ENVFILE="$(mktemp)"
+          chmod 600 "$ENVFILE"
+          cat > "$ENVFILE" <<EOF
+          DISCORD_TOKEN=$DISCORD_TOKEN
+          DISCORD_GUILD_ID=$DISCORD_GUILD_ID
+          DISCORD_CHANNEL_ID=$DISCORD_CHANNEL_ID
+          DISCORD_USER_ID=$DISCORD_USER_ID
+          FRANCE_TRAVAIL_CLIENT_ID=$FRANCE_TRAVAIL_CLIENT_ID
+          FRANCE_TRAVAIL_CLIENT_SECRET=$FRANCE_TRAVAIL_CLIENT_SECRET
+          DB_PATH=/var/lib/alternance-bot/offers.db
+          SCRAPE_INTERVAL_HOURS=2
+          MAX_OFFERS_PER_CYCLE=30
+          EOF
+
+          scp -i ~/.ssh/id_ed25519 "$ENVFILE" \
+            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/alternance-env"
+          rm -f "$ENVFILE"
+
+          ssh -i ~/.ssh/id_ed25519 \
+            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            'sudo -n install -m 0640 -o root -g alternance /tmp/alternance-env /etc/alternance-bot/env && \
+             shred -u /tmp/alternance-env 2>/dev/null || rm -f /tmp/alternance-env'
+
+      - name: Restart service
+        run: |
+          ssh -i ~/.ssh/id_ed25519 \
+            "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
+            'sudo -n systemctl daemon-reload && sudo -n systemctl restart alternance-bot && \
+             sleep 3 && sudo -n systemctl is-active alternance-bot'
