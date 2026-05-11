@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Iterable
+from datetime import datetime, timedelta, timezone
+from typing import Iterable, Optional
 
 import httpx
 
@@ -17,6 +18,15 @@ from .sources.base import Source
 log = logging.getLogger(__name__)
 
 
+class CycleResult:
+    """Outcome of a scrape cycle."""
+
+    def __init__(self):
+        self.inserted_total: int = 0
+        self.per_source: dict[str, dict[str, int]] = {}
+        self.skipped: bool = False  # True if a cycle was already in flight
+
+
 class Scraper:
     def __init__(self, cfg: Config, db: Database, bot: AlternanceBot,
                  sources: Iterable[Source], excel: ExcelExporter):
@@ -27,27 +37,39 @@ class Scraper:
         self.excel = excel
         self._running = False
         self._stop = asyncio.Event()
+        self.last_run_at: Optional[datetime] = None
+        self.last_run_result: Optional[CycleResult] = None
+        self.next_run_at: Optional[datetime] = None
 
-    async def run_once(self) -> int:
-        """One scrape cycle. Returns count of offers newly inserted."""
+    async def run_once(self) -> CycleResult:
+        """One scrape cycle. Returns a CycleResult."""
+        result = CycleResult()
         if self._running:
             log.info("scrape cycle skipped: previous still running")
-            return 0
+            result.skipped = True
+            return result
         self._running = True
         try:
             async with httpx.AsyncClient(http2=False) as client:
-                results = await asyncio.gather(
+                per_source_offers = await asyncio.gather(
                     *(s.safe_fetch(client) for s in self.sources)
                 )
-            all_offers = [o for batch in results for o in batch]
+            all_offers = []
+            for src, batch in zip(self.sources, per_source_offers):
+                result.per_source.setdefault(
+                    src.name, {"fetched": 0, "inserted": 0}
+                )
+                result.per_source[src.name]["fetched"] = len(batch)
+                all_offers.extend((src.name, o) for o in batch)
             log.info("scrape cycle: %d filtered offers across %d sources",
                      len(all_offers), len(self.sources))
 
             inserted_ids: list[int] = []
-            for offer in all_offers:
+            for src_name, offer in all_offers:
                 new_id = await self.db.insert_offer(offer.to_db())
                 if new_id:
                     inserted_ids.append(new_id)
+                    result.per_source[src_name]["inserted"] += 1
 
             inserted_ids = inserted_ids[: self.cfg.max_offers_per_cycle]
             log.info("posting %d new offers to Discord", len(inserted_ids))
@@ -56,7 +78,11 @@ class Scraper:
                 await asyncio.sleep(0.7)  # gentle on Discord rate limit
             if inserted_ids:
                 await self.excel.rebuild_safe()
-            return len(inserted_ids)
+
+            result.inserted_total = len(inserted_ids)
+            self.last_run_at = datetime.now(timezone.utc)
+            self.last_run_result = result
+            return result
         finally:
             self._running = False
 
@@ -68,6 +94,7 @@ class Scraper:
         except Exception as e:
             log.exception("initial scrape failed: %s", e)
         while not self._stop.is_set():
+            self.next_run_at = datetime.now(timezone.utc) + timedelta(seconds=interval)
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=interval)
             except asyncio.TimeoutError:

@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Optional, TYPE_CHECKING
 
 import discord
 from discord import app_commands
@@ -13,8 +14,25 @@ from .db import Database
 from .excel import ExcelExporter
 from .notifier import OfferView, STATE_LABELS, build_embed
 
+if TYPE_CHECKING:
+    from .scheduler import Scraper
+
 
 log = logging.getLogger(__name__)
+
+
+def _format_duration(seconds: float) -> str:
+    seconds = int(seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, s = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {s}s" if s else f"{minutes}m"
+    hours, minutes = divmod(minutes, 60)
+    if hours < 24:
+        return f"{hours}h {minutes:02d}m"
+    days, hours = divmod(hours, 24)
+    return f"{days}j {hours}h"
 
 
 class AlternanceBot(discord.Client):
@@ -28,7 +46,12 @@ class AlternanceBot(discord.Client):
         self._channel: Optional[discord.TextChannel] = None
         self._on_ready_extra = None
         self._on_ready_fired = False
+        self._scraper: Optional["Scraper"] = None
+        self._start_time: datetime = datetime.now(timezone.utc)
         self._register_commands()
+
+    def set_scraper(self, scraper: "Scraper") -> None:
+        self._scraper = scraper
 
     def set_on_ready(self, coro_factory) -> None:
         """Inject a coroutine factory invoked once the bot is fully ready."""
@@ -232,17 +255,95 @@ class AlternanceBot(discord.Client):
         self._scrape_callback = None
 
         @tree.command(name="scrape",
-                      description="Lance un cycle de scraping immédiat")
+                      description="Lance un cycle de scraping immédiat et attend le résultat")
         async def scrape_cmd(interaction: discord.Interaction):
-            if not self._scrape_callback:
+            if not self._scraper:
                 await interaction.response.send_message(
                     "Scraper non initialisé.", ephemeral=True
                 )
                 return
-            await interaction.response.send_message(
-                "Cycle de scraping lancé en arrière-plan.", ephemeral=True
+            await interaction.response.defer(ephemeral=True, thinking=True)
+            try:
+                result = await self._scraper.run_once()
+            except Exception as e:
+                log.exception("manual scrape failed: %s", e)
+                await interaction.followup.send(
+                    f"❌ Scrape échoué : {e}", ephemeral=True
+                )
+                return
+            if result.skipped:
+                await interaction.followup.send(
+                    "⏳ Un cycle de scrape est déjà en cours, réessaie plus tard.",
+                    ephemeral=True,
+                )
+                return
+            embed = discord.Embed(
+                title="🔄 Cycle de scraping terminé",
+                description=f"**{result.inserted_total}** nouvelles offres ajoutées.",
+                color=discord.Color.green() if result.inserted_total
+                      else discord.Color.greyple(),
             )
-            asyncio.create_task(self._scrape_callback())
+            lines = []
+            for src, stats in sorted(result.per_source.items()):
+                lines.append(
+                    f"**{src}** · {stats['fetched']} trouvées · "
+                    f"{stats['inserted']} nouvelles"
+                )
+            if lines:
+                embed.add_field(name="Par source", value="\n".join(lines),
+                                inline=False)
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+        @tree.command(name="status",
+                      description="État du bot : uptime, dernier et prochain scrape")
+        async def status_cmd(interaction: discord.Interaction):
+            now = datetime.now(timezone.utc)
+            uptime = now - self._start_time
+            embed = discord.Embed(
+                title="🟢 Bot status",
+                color=discord.Color.green(),
+            )
+            embed.add_field(
+                name="Uptime",
+                value=_format_duration(uptime.total_seconds()),
+                inline=True,
+            )
+            embed.add_field(
+                name="Intervalle scrape",
+                value=f"{self.cfg.scrape_interval_hours}h",
+                inline=True,
+            )
+            if self._scraper:
+                last = self._scraper.last_run_at
+                if last:
+                    elapsed = (now - last).total_seconds()
+                    n = (self._scraper.last_run_result.inserted_total
+                         if self._scraper.last_run_result else 0)
+                    embed.add_field(
+                        name="Dernier scrape",
+                        value=f"il y a {_format_duration(elapsed)} "
+                              f"({n} nouvelle(s))",
+                        inline=False,
+                    )
+                else:
+                    embed.add_field(
+                        name="Dernier scrape",
+                        value="jamais (cycle en cours ou démarrage récent)",
+                        inline=False,
+                    )
+                nxt = self._scraper.next_run_at
+                if nxt:
+                    remaining = (nxt - now).total_seconds()
+                    if remaining < 0:
+                        remaining_str = "imminent"
+                    else:
+                        remaining_str = f"dans {_format_duration(remaining)}"
+                    embed.add_field(
+                        name="Prochain scrape",
+                        value=remaining_str,
+                        inline=False,
+                    )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
         @tree.command(name="excel",
                       description="Télécharger le fichier Excel à jour")

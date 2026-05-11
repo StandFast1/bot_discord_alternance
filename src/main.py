@@ -59,6 +59,7 @@ async def amain() -> None:
     scraper = Scraper(cfg, db, bot, sources, excel)
 
     bot.set_scrape_callback(scraper.run_once)
+    bot.set_scraper(scraper)
     bot.set_on_ready(scraper.loop_forever)
 
     loop = asyncio.get_running_loop()
