@@ -374,5 +374,59 @@ class AlternanceBot(discord.Client):
                     ephemeral=True,
                 )
 
+        @tree.command(name="help",
+                      description="Liste toutes les commandes du bot")
+        async def help_cmd(interaction: discord.Interaction):
+            embed = discord.Embed(
+                title="🤖 Commandes du bot alternance",
+                description="Toutes les réponses sont **ephemeral** "
+                            "(visibles que par toi).",
+                color=discord.Color.blurple(),
+            )
+            embed.add_field(
+                name="📊 Suivi",
+                value=(
+                    "`/stats` — tableau de bord : aujourd'hui, total, "
+                    "par source, taux de refus, graphe 7 jours\n"
+                    "`/status` — uptime, dernier et prochain scrape\n"
+                    "`/todo` — offres marquées **À faire**\n"
+                    "`/new` — offres nouvelles non triées\n"
+                    "`/search <mot>` — chercher dans titre/entreprise/description"
+                ),
+                inline=False,
+            )
+            embed.add_field(
+                name="🔄 Scraping",
+                value=(
+                    f"`/scrape` — lance un cycle immédiat "
+                    f"(auto toutes les {self.cfg.scrape_interval_hours}h)\n"
+                ),
+                inline=False,
+            )
+            embed.add_field(
+                name="📑 Export",
+                value=(
+                    "`/excel` — télécharger le fichier xlsx à jour "
+                    "(rebuild auto à chaque changement)"
+                ),
+                inline=False,
+            )
+            embed.add_field(
+                name="🎛️ Boutons sur chaque offre",
+                value=(
+                    "📌 **À faire** — à candidater bientôt\n"
+                    "✅ **Envoyée** — candidature envoyée "
+                    "(compte pour l'objectif quotidien)\n"
+                    "❌ **Refus** — réponse négative\n"
+                    "🗑️ **Ignorer** — pas pertinente, à oublier"
+                ),
+                inline=False,
+            )
+            embed.set_footer(
+                text=f"Objectif : 20 candidatures envoyées par jour · "
+                     f"Interval scrape : {self.cfg.scrape_interval_hours}h"
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
     def set_scrape_callback(self, coro_factory) -> None:
         self._scrape_callback = coro_factory
