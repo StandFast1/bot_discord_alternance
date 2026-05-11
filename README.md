@@ -132,6 +132,73 @@ Dans ton salon Discord :
 - **Service hardened** : `NoNewPrivileges`, `ProtectSystem=strict`, `PrivateTmp`, `RestrictSUIDSGID`, etc. (cf. `deploy/alternance-bot.service`)
 - **User dédié** sans shell — le bot ne peut rien faire d'autre que ce qu'il fait.
 
+## Sources école 2600 (Grimp + Bluebox) — auth par cookie
+
+Ces 2 sources sont **derrière login**. La méthode pragmatique : tu copies ton cookie de session depuis ton navigateur, le bot l'utilise. Quand il expire (typiquement quelques semaines), tu rafraîchis le secret GitHub.
+
+### Étape 1 — Récupérer ton cookie de session
+
+1. Connecte-toi normalement sur https://ecole2600.grimp.io (ou bluebox.2600.eu)
+2. Ouvre **DevTools** (F12) → onglet **Application** (Chrome/Edge) ou **Storage** (Firefox)
+3. Section **Cookies** dans la sidebar → clique sur le domaine `ecole2600.grimp.io`
+4. Repère le ou les cookies d'auth — souvent un seul, du genre `_grimp_session`, `session_id`, `connect.sid`, `JWT`, etc.
+5. Copie sa **valeur** (clic droit → Copy)
+6. Format à mettre dans le secret GitHub : `nom_du_cookie=valeur_du_cookie`
+   (s'il y en a plusieurs : `nom1=val1; nom2=val2`)
+
+### Étape 2 — Identifier l'endpoint JSON
+
+Pendant que tu es connecté :
+
+1. DevTools → onglet **Network** → filtre **Fetch/XHR**
+2. Recharge la page de liste des offres
+3. Cherche une requête qui renvoie un JSON avec les offres (clic dessus → onglet "Response")
+4. Note dans l'onglet "Headers" :
+   - **Request URL** (l'endpoint exact, ex: `https://ecole2600.grimp.io/api/v1/offers?per_page=50`)
+   - **Query string parameters** (les params dans `?...`)
+5. Dans **Response** :
+   - Si le JSON ressemble à `{"data": [...]}`, note la clé top-level (`data`, `offers`, `results`...)
+   - Note les clés de chaque offre (`title`, `company`, `location`, etc.)
+
+### Étape 3 — Ajuster les fichiers source
+
+Dans [src/sources/grimp.py](src/sources/grimp.py) et [src/sources/bluebox.py](src/sources/bluebox.py), modifie en haut du fichier :
+
+```python
+API_BASE = "..."              # base de l'URL
+LIST_PATH = "/api/..."        # chemin exact de l'endpoint que tu as trouvé
+LIST_PARAMS = {               # params à envoyer
+    "per_page": 50,
+    # ...
+}
+```
+
+Et si les clés JSON diffèrent de ce que j'ai supposé dans `_to_offer()`, ajuste-les également. Les sources logguent `WARNING ... HTTP XXX` ou `non-JSON response` quand quelque chose foire — `journalctl -u alternance-bot | grep -E "grimp|bluebox"` pour debug.
+
+### Étape 4 — Ajouter les secrets GitHub
+
+Repository secrets supplémentaires :
+
+| Secret | Valeur |
+|---|---|
+| `GRIMP_COOKIE` | `nom_cookie=valeur_cookie` (depuis ton navigateur sur ecole2600.grimp.io) |
+| `BLUEBOX_COOKIE` | idem pour bluebox.2600.eu |
+
+Sans ces secrets, les sources sont skip silencieusement (`return [] if not cookie`).
+
+### Quand le cookie expire
+
+Tu verras dans les logs :
+```
+WARNING grimp auth expired (HTTP 401) — refresh GRIMP_COOKIE secret
+```
+
+Refais l'étape 1, mets à jour le secret GitHub, push n'importe quel commit pour redéployer. Pas de redémarrage manuel nécessaire.
+
+### Légalité
+
+Vérifie le règlement / charte numérique de ton école avant d'utiliser des bots sur leur intranet. Beaucoup l'interdisent même pour des usages personnels. C'est ta responsabilité.
+
 ## Fragilité des sources — à savoir
 
 **France Travail** est la seule source 100% officielle/stable : API contractuelle, format JSON garanti. **C'est la source principale.**

@@ -196,6 +196,42 @@ class Database:
 
         return await self._run(_do)
 
+    async def stats_by_source(self) -> dict[str, dict[str, int]]:
+        def _do(conn):
+            rows = conn.execute(
+                "SELECT source, state, COUNT(*) as n FROM offers "
+                "GROUP BY source, state"
+            ).fetchall()
+            out: dict[str, dict[str, int]] = {}
+            for r in rows:
+                out.setdefault(r["source"], {s: 0 for s in STATES})
+                out[r["source"]][r["state"]] = r["n"]
+            return out
+
+        return await self._run(_do)
+
+    async def sent_per_day(self, days: int = 7) -> list[tuple[str, int]]:
+        """Return [(YYYY-MM-DD, count_sent)] for the last `days` days, oldest first."""
+        def _do(conn):
+            rows = conn.execute(
+                "SELECT date(state_changed_at) as d, COUNT(*) as n "
+                "FROM offers "
+                "WHERE state = 'sent' "
+                "AND date(state_changed_at) >= date('now', ?) "
+                "GROUP BY d ORDER BY d",
+                (f"-{days - 1} days",),
+            ).fetchall()
+            return [(r["d"], r["n"]) for r in rows]
+
+        return await self._run(_do)
+
+    async def all_offers(self) -> list[sqlite3.Row]:
+        return await self._run(
+            lambda conn: conn.execute(
+                "SELECT * FROM offers ORDER BY discovered_at DESC"
+            ).fetchall()
+        )
+
     async def search(self, query: str, limit: int = 20) -> list[sqlite3.Row]:
         like = f"%{query}%"
         return await self._run(

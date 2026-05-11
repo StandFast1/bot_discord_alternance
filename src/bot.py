@@ -10,6 +10,7 @@ from discord import app_commands
 
 from .config import Config
 from .db import Database
+from .excel import ExcelExporter
 from .notifier import OfferView, STATE_LABELS, build_embed
 
 
@@ -17,11 +18,12 @@ log = logging.getLogger(__name__)
 
 
 class AlternanceBot(discord.Client):
-    def __init__(self, cfg: Config, db: Database):
+    def __init__(self, cfg: Config, db: Database, excel: ExcelExporter):
         intents = discord.Intents.default()
         super().__init__(intents=intents)
         self.cfg = cfg
         self.db = db
+        self.excel = excel
         self.tree = app_commands.CommandTree(self)
         self._channel: Optional[discord.TextChannel] = None
         self._on_ready_extra = None
@@ -34,7 +36,7 @@ class AlternanceBot(discord.Client):
 
     async def setup_hook(self) -> None:
         # Re-attach the persistent view so buttons keep working after restart
-        self.add_view(OfferView(self.db))
+        self.add_view(OfferView(self.db, self.excel))
         guild = discord.Object(id=self.cfg.discord_guild_id)
         self.tree.copy_global_to(guild=guild)
         await self.tree.sync(guild=guild)
@@ -60,7 +62,7 @@ class AlternanceBot(discord.Client):
         if not row:
             return
         embed = build_embed(row)
-        view = OfferView(self.db)
+        view = OfferView(self.db, self.excel)
         content = f"<@{self.cfg.discord_user_id}> nouvelle offre"
         try:
             msg = await self._channel.send(content=content, embed=embed, view=view)
@@ -79,12 +81,15 @@ class AlternanceBot(discord.Client):
         async def stats(interaction: discord.Interaction):
             total = await self.db.stats()
             today = await self.db.stats_today()
+            by_source = await self.db.stats_by_source()
+            sent_history = await self.db.sent_per_day(days=7)
+
             embed = discord.Embed(
-                title="Statistiques candidatures",
+                title="📊 Statistiques candidatures",
                 color=discord.Color.blurple(),
             )
             embed.add_field(
-                name="Aujourd'hui (changements d'état)",
+                name="Aujourd'hui",
                 value="\n".join(
                     f"**{STATE_LABELS[s]}**: {today.get(s, 0)}"
                     for s in ("todo", "sent", "rejected", "ignored")
@@ -99,14 +104,66 @@ class AlternanceBot(discord.Client):
                 ),
                 inline=True,
             )
+
             sent_today = today.get("sent", 0)
             goal = 20
-            bar = "🟩" * min(sent_today, goal) + "⬜" * max(0, goal - sent_today)
+            filled = min(sent_today, goal)
+            bar = "🟩" * filled + "⬜" * max(0, goal - filled)
+            if sent_today > goal:
+                bar += f" +{sent_today - goal}"
             embed.add_field(
-                name=f"Objectif quotidien {sent_today}/{goal}",
+                name=f"🎯 Objectif quotidien {sent_today}/{goal}",
                 value=bar,
                 inline=False,
             )
+
+            # Per-source breakdown: total found / sent / rejected
+            if by_source:
+                src_lines = []
+                for src in sorted(by_source.keys()):
+                    s = by_source[src]
+                    total_src = sum(s.values())
+                    src_lines.append(
+                        f"**{src}** · {total_src} trouv. · "
+                        f"{s.get('sent', 0)} env. · {s.get('rejected', 0)} ref."
+                    )
+                embed.add_field(
+                    name="Par source",
+                    value="\n".join(src_lines),
+                    inline=False,
+                )
+
+            # Response rate (out of sent applications)
+            sent_total = total.get("sent", 0)
+            rejected_total = total.get("rejected", 0)
+            if sent_total > 0:
+                rate = (rejected_total / sent_total) * 100
+                embed.add_field(
+                    name="Taux de refus (sur envoyées)",
+                    value=f"{rejected_total}/{sent_total} = {rate:.1f}%",
+                    inline=True,
+                )
+
+            # 7-day sent chart (ASCII)
+            if sent_history:
+                from datetime import date, timedelta
+                today_d = date.today()
+                full_history = []
+                hist_dict = dict(sent_history)
+                for i in range(6, -1, -1):
+                    d = (today_d - timedelta(days=i)).isoformat()
+                    full_history.append((d, hist_dict.get(d, 0)))
+                max_n = max((n for _, n in full_history), default=1) or 1
+                bar_lines = []
+                for d, n in full_history:
+                    blocks = "▇" * int((n / max_n) * 10) if n else ""
+                    bar_lines.append(f"`{d[5:]}` {blocks} {n}")
+                embed.add_field(
+                    name="📈 Envoyées 7 derniers jours",
+                    value="\n".join(bar_lines) or "—",
+                    inline=False,
+                )
+
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
         @tree.command(name="todo",
@@ -186,6 +243,35 @@ class AlternanceBot(discord.Client):
                 "Cycle de scraping lancé en arrière-plan.", ephemeral=True
             )
             asyncio.create_task(self._scrape_callback())
+
+        @tree.command(name="excel",
+                      description="Télécharger le fichier Excel à jour")
+        async def excel_cmd(interaction: discord.Interaction):
+            await interaction.response.defer(ephemeral=True, thinking=True)
+            try:
+                await self.excel.rebuild()
+            except Exception as e:
+                log.exception("excel rebuild failed on /excel: %s", e)
+                await interaction.followup.send(
+                    f"Erreur génération xlsx: {e}", ephemeral=True
+                )
+                return
+            path = self.excel.path
+            if not path.exists():
+                await interaction.followup.send(
+                    "Fichier introuvable.", ephemeral=True
+                )
+                return
+            try:
+                await interaction.followup.send(
+                    file=discord.File(str(path), filename=path.name),
+                    ephemeral=True,
+                )
+            except discord.HTTPException as e:
+                await interaction.followup.send(
+                    f"Envoi impossible (fichier trop gros ?): {e}",
+                    ephemeral=True,
+                )
 
     def set_scrape_callback(self, coro_factory) -> None:
         self._scrape_callback = coro_factory

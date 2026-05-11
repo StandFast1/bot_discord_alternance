@@ -10,6 +10,7 @@ import httpx
 from .bot import AlternanceBot
 from .config import Config
 from .db import Database
+from .excel import ExcelExporter
 from .sources.base import Source
 
 
@@ -18,11 +19,12 @@ log = logging.getLogger(__name__)
 
 class Scraper:
     def __init__(self, cfg: Config, db: Database, bot: AlternanceBot,
-                 sources: Iterable[Source]):
+                 sources: Iterable[Source], excel: ExcelExporter):
         self.cfg = cfg
         self.db = db
         self.bot = bot
         self.sources = list(sources)
+        self.excel = excel
         self._running = False
         self._stop = asyncio.Event()
 
@@ -52,6 +54,8 @@ class Scraper:
             for oid in inserted_ids:
                 await self.bot.post_offer(oid)
                 await asyncio.sleep(0.7)  # gentle on Discord rate limit
+            if inserted_ids:
+                await self.excel.rebuild_safe()
             return len(inserted_ids)
         finally:
             self._running = False

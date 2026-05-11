@@ -69,6 +69,8 @@ jobs:
           DISCORD_USER_ID: ${{ secrets.DISCORD_USER_ID }}
           FRANCE_TRAVAIL_CLIENT_ID: ${{ secrets.FRANCE_TRAVAIL_CLIENT_ID }}
           FRANCE_TRAVAIL_CLIENT_SECRET: ${{ secrets.FRANCE_TRAVAIL_CLIENT_SECRET }}
+          GRIMP_COOKIE: ${{ secrets.GRIMP_COOKIE }}
+          BLUEBOX_COOKIE: ${{ secrets.BLUEBOX_COOKIE }}
         run: |
           ENVFILE="$(mktemp)"
           chmod 600 "$ENVFILE"
@@ -79,7 +81,10 @@ jobs:
           DISCORD_USER_ID=$DISCORD_USER_ID
           FRANCE_TRAVAIL_CLIENT_ID=$FRANCE_TRAVAIL_CLIENT_ID
           FRANCE_TRAVAIL_CLIENT_SECRET=$FRANCE_TRAVAIL_CLIENT_SECRET
+          GRIMP_COOKIE=$GRIMP_COOKIE
+          BLUEBOX_COOKIE=$BLUEBOX_COOKIE
           DB_PATH=/var/lib/alternance-bot/offers.db
+          EXCEL_PATH=/var/lib/alternance-bot/candidatures.xlsx
           SCRAPE_INTERVAL_HOURS=2
           MAX_OFFERS_PER_CYCLE=30
           EOF

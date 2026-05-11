@@ -35,7 +35,11 @@ class Config:
     france_travail_client_id: str
     france_travail_client_secret: str
 
+    grimp_cookie: str
+    bluebox_cookie: str
+
     db_path: str
+    excel_path: str
     scrape_interval_hours: int
     max_offers_per_cycle: int
 
@@ -48,7 +52,10 @@ class Config:
             discord_user_id=int(_req("DISCORD_USER_ID")),
             france_travail_client_id=_opt("FRANCE_TRAVAIL_CLIENT_ID"),
             france_travail_client_secret=_opt("FRANCE_TRAVAIL_CLIENT_SECRET"),
+            grimp_cookie=_opt("GRIMP_COOKIE"),
+            bluebox_cookie=_opt("BLUEBOX_COOKIE"),
             db_path=_opt("DB_PATH", "/var/lib/alternance-bot/offers.db"),
+            excel_path=_opt("EXCEL_PATH", "/var/lib/alternance-bot/candidatures.xlsx"),
             scrape_interval_hours=_int("SCRAPE_INTERVAL_HOURS", 2),
             max_offers_per_cycle=_int("MAX_OFFERS_PER_CYCLE", 30),
         )

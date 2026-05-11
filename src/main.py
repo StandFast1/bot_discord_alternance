@@ -8,10 +8,13 @@ import signal
 from .bot import AlternanceBot
 from .config import Config
 from .db import Database
+from .excel import ExcelExporter
 from .scheduler import Scraper
 from .sources import (
     ApecSource,
+    BlueboxSource,
     FranceTravailSource,
+    GrimpSource,
     HelloWorkSource,
     WTTJSource,
 )
@@ -36,6 +39,8 @@ def build_sources(cfg: Config) -> list:
         HelloWorkSource(),
         WTTJSource(),
         ApecSource(),
+        GrimpSource(cookie=cfg.grimp_cookie),
+        BlueboxSource(cookie=cfg.bluebox_cookie),
     ]
 
 
@@ -48,9 +53,10 @@ async def amain() -> None:
     await db.init()
     log.info("db ready at %s", cfg.db_path)
 
-    bot = AlternanceBot(cfg, db)
+    excel = ExcelExporter(db, cfg.excel_path)
+    bot = AlternanceBot(cfg, db, excel)
     sources = build_sources(cfg)
-    scraper = Scraper(cfg, db, bot, sources)
+    scraper = Scraper(cfg, db, bot, sources, excel)
 
     bot.set_scrape_callback(scraper.run_once)
     bot.set_on_ready(scraper.loop_forever)

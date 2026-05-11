@@ -1,12 +1,15 @@
 """Discord embed formatting + posting logic."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import sqlite3
+from typing import Optional
 
 import discord
 
 from .db import Database
+from .excel import ExcelExporter
 
 
 log = logging.getLogger(__name__)
@@ -70,9 +73,10 @@ def build_embed(row: sqlite3.Row) -> discord.Embed:
 class OfferView(discord.ui.View):
     """Persistent view: buttons survive bot restarts via custom_id."""
 
-    def __init__(self, db: Database):
+    def __init__(self, db: Database, excel: Optional[ExcelExporter] = None):
         super().__init__(timeout=None)
         self.db = db
+        self.excel = excel
 
     async def _update(self, interaction: discord.Interaction, state: str) -> None:
         if not interaction.message:
@@ -91,6 +95,8 @@ class OfferView(discord.ui.View):
         embed = build_embed(new_row)
         await interaction.response.edit_message(embed=embed, view=self)
         log.info("offer %d -> %s by %s", row["id"], state, interaction.user)
+        if self.excel:
+            asyncio.create_task(self.excel.rebuild_safe())
 
     @discord.ui.button(
         label="À faire", style=discord.ButtonStyle.primary,

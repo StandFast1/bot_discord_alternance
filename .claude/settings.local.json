@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python -m compileall -q src/)"
+      "Bash(python -m compileall -q src/)",
+      "Bash(ls C:/Users/PC/.claude/projects/c--Users-PC-Documents-GitHub-bot-discord-alternance/memory/ 2>&1)",
+      "Read(//c/Users/PC/.claude/projects/c--Users-PC-Documents-GitHub-bot-discord-alternance/memory/**)"
     ]
   }
 }
