@@ -57,9 +57,9 @@ jobs:
 
           ssh -i ~/.ssh/id_ed25519 \
             "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" \
-            'sudo -n git -C /opt/alternance-bot fetch --all --quiet && \
-             sudo -n git -C /opt/alternance-bot reset --hard origin/main --quiet && \
-             sudo -n /opt/alternance-bot/.venv/bin/pip install -r /opt/alternance-bot/requirements.txt --quiet'
+            'sudo -n -u alternance git -C /opt/alternance-bot fetch --all --quiet && \
+             sudo -n -u alternance git -C /opt/alternance-bot reset --hard origin/main --quiet && \
+             sudo -n -u alternance /opt/alternance-bot/.venv/bin/pip install -r /opt/alternance-bot/requirements.txt --quiet --no-cache-dir'
 
       - name: Inject secrets into systemd EnvironmentFile
         env:
