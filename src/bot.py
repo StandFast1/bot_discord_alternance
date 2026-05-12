@@ -12,7 +12,15 @@ from discord import app_commands
 from .config import Config
 from .db import Database
 from .excel import ExcelExporter
-from .notifier import OfferView, STATE_LABELS, build_embed
+from .notifier import (
+    OfferView,
+    ProspectView,
+    PROSPECT_STATE_LABELS,
+    STATE_LABELS,
+    build_embed,
+    build_prospect_embed,
+)
+from .prospects import ProspectFinder
 
 if TYPE_CHECKING:
     from .scheduler import Scraper
@@ -36,12 +44,14 @@ def _format_duration(seconds: float) -> str:
 
 
 class AlternanceBot(discord.Client):
-    def __init__(self, cfg: Config, db: Database, excel: ExcelExporter):
+    def __init__(self, cfg: Config, db: Database, excel: ExcelExporter,
+                 prospects: ProspectFinder):
         intents = discord.Intents.default()
         super().__init__(intents=intents)
         self.cfg = cfg
         self.db = db
         self.excel = excel
+        self.prospects = prospects
         self.tree = app_commands.CommandTree(self)
         self._channel: Optional[discord.TextChannel] = None
         self._on_ready_extra = None
@@ -58,8 +68,9 @@ class AlternanceBot(discord.Client):
         self._on_ready_extra = coro_factory
 
     async def setup_hook(self) -> None:
-        # Re-attach the persistent view so buttons keep working after restart
+        # Re-attach the persistent views so buttons keep working after restart
         self.add_view(OfferView(self.db, self.excel))
+        self.add_view(ProspectView(self.prospects))
         guild = discord.Object(id=self.cfg.discord_guild_id)
         self.tree.copy_global_to(guild=guild)
         await self.tree.sync(guild=guild)
@@ -93,6 +104,21 @@ class AlternanceBot(discord.Client):
             log.exception("failed to post offer %d: %s", offer_id, e)
             return
         await self.db.set_message_id(offer_id, msg.id)
+
+    async def post_prospect(self, prospect_id: int) -> None:
+        if not self._channel:
+            return
+        row = await self.prospects.get(prospect_id)
+        if not row:
+            return
+        embed = build_prospect_embed(row)
+        view = ProspectView(self.prospects)
+        try:
+            msg = await self._channel.send(embed=embed, view=view)
+        except discord.DiscordException as e:
+            log.exception("failed to post prospect %d: %s", prospect_id, e)
+            return
+        await self.prospects.set_message_id(prospect_id, msg.id)
 
     # ---- slash commands ----
 
@@ -374,6 +400,109 @@ class AlternanceBot(discord.Client):
                     ephemeral=True,
                 )
 
+        @tree.command(
+            name="prospect",
+            description="Cherche de nouvelles entreprises IDF à démarcher",
+        )
+        @app_commands.describe(
+            limit="Nombre max de nouveaux prospects à trouver (défaut 10, max 30)"
+        )
+        async def prospect_cmd(interaction: discord.Interaction,
+                               limit: int = 10):
+            limit = max(1, min(30, limit))
+            await interaction.response.defer(ephemeral=True, thinking=True)
+            try:
+                new_ids = await self.prospects.find_new(limit=limit)
+            except Exception as e:
+                log.exception("prospect search failed: %s", e)
+                await interaction.followup.send(
+                    f"❌ Recherche échouée : {e}", ephemeral=True
+                )
+                return
+            if not new_ids:
+                await interaction.followup.send(
+                    "Aucun nouveau prospect trouvé "
+                    "(ils sont peut-être déjà tous en base ou dans tes offres).",
+                    ephemeral=True,
+                )
+                return
+            await interaction.followup.send(
+                f"🎯 {len(new_ids)} nouveaux prospects trouvés, je les poste...",
+                ephemeral=True,
+            )
+            for pid in new_ids:
+                await self.post_prospect(pid)
+                await asyncio.sleep(0.7)
+
+        @tree.command(
+            name="prospects",
+            description="Liste tes prospects par état",
+        )
+        @app_commands.describe(
+            state="État à filtrer (défaut: to_contact)"
+        )
+        @app_commands.choices(state=[
+            app_commands.Choice(name=label, value=value)
+            for value, label in PROSPECT_STATE_LABELS.items()
+        ])
+        async def prospects_cmd(
+            interaction: discord.Interaction,
+            state: str = "to_contact",
+        ):
+            rows = await self.prospects.list_by_state(state, limit=25)
+            if not rows:
+                await interaction.response.send_message(
+                    f"Aucun prospect en état **{PROSPECT_STATE_LABELS.get(state, state)}**.",
+                    ephemeral=True,
+                )
+                return
+            lines = []
+            for r in rows:
+                loc = " ".join(p for p in (r["postal_code"], r["city"]) if p)
+                lines.append(
+                    f"• **{(r['name'] or '?')[:50]}** — {loc or '—'} "
+                    f"({r['headcount'] or '?'} sal.)"
+                )
+            embed = discord.Embed(
+                title=f"Prospects · {PROSPECT_STATE_LABELS.get(state, state)} "
+                      f"({len(rows)})",
+                description="\n".join(lines),
+                color=discord.Color.gold(),
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
+        @tree.command(
+            name="prospect_stats",
+            description="Statistiques de prospection",
+        )
+        async def prospect_stats_cmd(interaction: discord.Interaction):
+            stats = await self.prospects.stats()
+            total = sum(stats.values())
+            embed = discord.Embed(
+                title="🎯 Prospection",
+                description=f"**{total}** entreprises en base",
+                color=discord.Color.gold(),
+            )
+            embed.add_field(
+                name="Pipeline",
+                value="\n".join(
+                    f"**{PROSPECT_STATE_LABELS[k]}**: {v}"
+                    for k, v in stats.items()
+                ),
+                inline=False,
+            )
+            contacted = stats.get("contacted", 0) + stats.get("responded", 0) \
+                + stats.get("interview", 0)
+            responded = stats.get("responded", 0) + stats.get("interview", 0)
+            if contacted > 0:
+                rate = (responded / contacted) * 100
+                embed.add_field(
+                    name="Taux de réponse",
+                    value=f"{responded}/{contacted} = {rate:.1f}%",
+                    inline=True,
+                )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
         @tree.command(name="help",
                       description="Liste toutes les commandes du bot")
         async def help_cmd(interaction: discord.Interaction):
@@ -412,6 +541,16 @@ class AlternanceBot(discord.Client):
                 inline=False,
             )
             embed.add_field(
+                name="🎯 Prospection (démarchage entreprises)",
+                value=(
+                    "`/prospect [limit]` — cherche entreprises IDF cyber/IT "
+                    "non déjà dans tes offres\n"
+                    "`/prospects [state]` — liste tes prospects par état\n"
+                    "`/prospect_stats` — pipeline et taux de réponse"
+                ),
+                inline=False,
+            )
+            embed.add_field(
                 name="🎛️ Boutons sur chaque offre",
                 value=(
                     "📌 **À faire** — à candidater bientôt\n"
@@ -419,6 +558,14 @@ class AlternanceBot(discord.Client):
                     "(compte pour l'objectif quotidien)\n"
                     "❌ **Refus** — réponse négative\n"
                     "🗑️ **Ignorer** — pas pertinente, à oublier"
+                ),
+                inline=False,
+            )
+            embed.add_field(
+                name="🎛️ Boutons sur chaque prospect",
+                value=(
+                    "🎯 **À démarcher** · 📨 **Contacté** · "
+                    "💬 **A répondu** · 🤝 **Entretien** · ❌ **Pas intéressé**"
                 ),
                 inline=False,
             )

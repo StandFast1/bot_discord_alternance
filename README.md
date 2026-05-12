@@ -4,7 +4,8 @@ Bot Discord auto-hébergé sur VPS qui scrape les offres d'**alternance cybersé
 
 ## Fonctionnalités
 
-- **Sources** : France Travail (API officielle), HelloWork, Welcome to the Jungle, APEC
+- **🎯 Prospection cold** : `/prospect` interroge la base SIRENE officielle (recherche-entreprises.api.gouv.fr, gratuit sans clé) pour sortir des entreprises IDF dans les NAF cyber/IT (62.01Z, 62.02A, 62.09Z, 63.11Z, etc.) qui ne sont **pas** dans tes offres scrapées. Workflow boutons : 🎯 À démarcher → 📨 Contacté → 💬 A répondu → 🤝 Entretien. Lien direct vers recherche LinkedIn pré-filtrée RH/recruteur de la boîte.
+- **Sources offres** : France Travail (API officielle), HelloWork, Welcome to the Jungle, APEC
 - **Filtres** : mots-clés cyber (cybersécurité, pentest, SOC, DevSecOps, IAM, etc.) + IDF (75/77/78/91/92/93/94/95) + alternance/apprentissage
 - **Dédup** persistant via SQLite — une offre n'est jamais postée deux fois
 - **Boutons Discord persistants** : statut modifiable après redémarrage du bot

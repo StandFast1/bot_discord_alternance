@@ -9,6 +9,7 @@ from .bot import AlternanceBot
 from .config import Config
 from .db import Database
 from .excel import ExcelExporter
+from .prospects import ProspectFinder
 from .scheduler import Scraper
 from .sources import (
     AdzunaSource,
@@ -67,7 +68,9 @@ async def amain() -> None:
     log.info("db ready at %s", cfg.db_path)
 
     excel = ExcelExporter(db, cfg.excel_path)
-    bot = AlternanceBot(cfg, db, excel)
+    prospects = ProspectFinder(db)
+    await prospects.init_db()
+    bot = AlternanceBot(cfg, db, excel, prospects)
     sources = build_sources(cfg)
     scraper = Scraper(cfg, db, bot, sources, excel)
 
