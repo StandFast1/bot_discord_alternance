@@ -38,6 +38,11 @@ class Config:
     grimp_cookie: str
     bluebox_cookie: str
 
+    adzuna_app_id: str
+    adzuna_app_key: str
+    jooble_api_key: str
+    jsearch_rapidapi_key: str
+
     db_path: str
     excel_path: str
     scrape_interval_hours: int
@@ -54,6 +59,10 @@ class Config:
             france_travail_client_secret=_opt("FRANCE_TRAVAIL_CLIENT_SECRET"),
             grimp_cookie=_opt("GRIMP_COOKIE"),
             bluebox_cookie=_opt("BLUEBOX_COOKIE"),
+            adzuna_app_id=_opt("ADZUNA_APP_ID"),
+            adzuna_app_key=_opt("ADZUNA_APP_KEY"),
+            jooble_api_key=_opt("JOOBLE_API_KEY"),
+            jsearch_rapidapi_key=_opt("JSEARCH_RAPIDAPI_KEY"),
             db_path=_opt("DB_PATH", "/var/lib/alternance-bot/offers.db"),
             excel_path=_opt("EXCEL_PATH", "/var/lib/alternance-bot/candidatures.xlsx"),
             scrape_interval_hours=_int("SCRAPE_INTERVAL_HOURS", 2),

@@ -71,6 +71,10 @@ jobs:
           FRANCE_TRAVAIL_CLIENT_SECRET: ${{ secrets.FRANCE_TRAVAIL_CLIENT_SECRET }}
           GRIMP_COOKIE: ${{ secrets.GRIMP_COOKIE }}
           BLUEBOX_COOKIE: ${{ secrets.BLUEBOX_COOKIE }}
+          ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
+          JOOBLE_API_KEY: ${{ secrets.JOOBLE_API_KEY }}
+          JSEARCH_RAPIDAPI_KEY: ${{ secrets.JSEARCH_RAPIDAPI_KEY }}
         run: |
           ENVFILE="$(mktemp)"
           chmod 600 "$ENVFILE"
@@ -83,6 +87,10 @@ jobs:
           FRANCE_TRAVAIL_CLIENT_SECRET=$FRANCE_TRAVAIL_CLIENT_SECRET
           GRIMP_COOKIE=$GRIMP_COOKIE
           BLUEBOX_COOKIE=$BLUEBOX_COOKIE
+          ADZUNA_APP_ID=$ADZUNA_APP_ID
+          ADZUNA_APP_KEY=$ADZUNA_APP_KEY
+          JOOBLE_API_KEY=$JOOBLE_API_KEY
+          JSEARCH_RAPIDAPI_KEY=$JSEARCH_RAPIDAPI_KEY
           DB_PATH=/var/lib/alternance-bot/offers.db
           EXCEL_PATH=/var/lib/alternance-bot/candidatures.xlsx
           SCRAPE_INTERVAL_HOURS=2

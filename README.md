@@ -132,6 +132,70 @@ Dans ton salon Discord :
 - **Service hardened** : `NoNewPrivileges`, `ProtectSystem=strict`, `PrivateTmp`, `RestrictSUIDSGID`, etc. (cf. `deploy/alternance-bot.service`)
 - **User dédié** sans shell — le bot ne peut rien faire d'autre que ce qu'il fait.
 
+## APIs externes ajoutées (à activer en remplissant les secrets)
+
+Toutes ces sources se désactivent silencieusement si leur secret est vide — pas de crash, juste 0 offre de cette source. Tu peux donc en activer 1 ou 2 pour tester avant le reste.
+
+### 🟢 Gratuit, déjà actif sans setup
+
+| Source | Couverture | Limite | Setup |
+|---|---|---|---|
+| **France Travail** | Officielle, énorme, FR | Bonne | clés API à demander |
+| **La Bonne Alternance** | Officielle gouv, spécifique **alternance** | Bonne | **aucun** |
+| HelloWork | Scraping FR | Fragile | aucun |
+| WTTJ | Algolia public | Bonne (mais placeholders) | extraire vraies clés du bundle JS |
+| APEC | API interne publique | Bonne | aucun |
+
+### 🟢 Gratuit, signup rapide requis
+
+#### Adzuna — 1000 calls/mois (largement assez)
+
+1. https://developer.adzuna.com → **Sign up for Free** (email + mot de passe)
+2. Tu reçois `app_id` (court, ~8 chars) et `app_key` (long, ~30 chars)
+3. Crée 2 GitHub Secrets : `ADZUNA_APP_ID` et `ADZUNA_APP_KEY`
+
+#### Jooble — gratuit avec clé email
+
+1. https://jooble.org/api/about → **Get API key**
+2. Remplis le formulaire (gratuit, usage non-commercial OK pour un bot perso)
+3. Tu reçois une clé par email (~30 chars)
+4. Crée GitHub Secret : `JOOBLE_API_KEY`
+
+### 💳 Payant (mais utile) — JSearch RapidAPI
+
+Le seul moyen **propre** de récupérer des offres **LinkedIn + Indeed + Glassdoor + ZipRecruiter** sans violer leurs ToS. Aggregator commercial.
+
+1. https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch
+2. Sign up avec ton compte Google/GitHub
+3. Subscribe au tier qui te convient :
+
+| Tier | Prix/mois | Requêtes/mois | Suffit pour ? |
+|---|---|---|---|
+| **BASIC** | **$9.99** | 2 500 | ✅ Largement (12 cycles/jour × 30 = 360/mois) |
+| FREE | 0 | 200 | ❌ Trop peu (200/mois = ~6/jour) |
+| PRO | $24.99 | 10 000 | overkill |
+| ULTRA | $49.99 | 50 000 | very overkill |
+
+→ Si tu peux mettre **10€/mois**, c'est **probablement le meilleur ROI** de tout le projet pour avoir LinkedIn dans la boucle.
+
+4. Une fois souscrit, copie ta **X-RapidAPI-Key** dans le dashboard
+5. GitHub Secret : `JSEARCH_RAPIDAPI_KEY`
+
+### ❌ Pourquoi pas LinkedIn / Indeed directement ?
+
+- **LinkedIn** : aucune API publique pour les offres. Scraping interdit par leurs ToS, bot ban si détecté. Le seul accès légitime = JSearch (ci-dessus).
+- **Indeed Publisher API** : discontinuée en 2023. Le scraping web est techniquement possible mais leur anti-bot Cloudflare est costaud.
+- **Glassdoor** : pas d'API publique. Même JSearch.
+
+### 💳 Autres options payantes (pour info)
+
+| Service | Prix | Pour quoi |
+|---|---|---|
+| **SerpAPI Google Jobs** | $50/mo (5k searches) | Google Jobs aggregator. Solide mais cher. |
+| **TheirStack** | $99/mo+ | Plus précis pour filtrage par tech stack. Overkill. |
+| **Talent.com API** | Pay-per-click | Modèle commission, pas pour usage solo. |
+| **CareerJet API** | Affiliation requise | Validation business, pas pour usage perso. |
+
 ## Sources école 2600 (Grimp + Bluebox) — auth par cookie
 
 Ces 2 sources sont **derrière login**. La méthode pragmatique : tu copies ton cookie de session depuis ton navigateur, le bot l'utilise. Quand il expire (typiquement quelques semaines), tu rafraîchis le secret GitHub.

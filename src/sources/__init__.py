@@ -5,6 +5,10 @@ from .wttj import WTTJSource
 from .apec import ApecSource
 from .grimp import GrimpSource
 from .bluebox import BlueboxSource
+from .labonnealternance import LaBonneAlternanceSource
+from .adzuna import AdzunaSource
+from .jooble import JoobleSource
+from .jsearch import JSearchSource
 
 __all__ = [
     "Offer",
@@ -15,4 +19,8 @@ __all__ = [
     "ApecSource",
     "GrimpSource",
     "BlueboxSource",
+    "LaBonneAlternanceSource",
+    "AdzunaSource",
+    "JoobleSource",
+    "JSearchSource",
 ]

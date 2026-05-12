@@ -11,11 +11,15 @@ from .db import Database
 from .excel import ExcelExporter
 from .scheduler import Scraper
 from .sources import (
+    AdzunaSource,
     ApecSource,
     BlueboxSource,
     FranceTravailSource,
     GrimpSource,
     HelloWorkSource,
+    JoobleSource,
+    JSearchSource,
+    LaBonneAlternanceSource,
     WTTJSource,
 )
 
@@ -32,13 +36,22 @@ def setup_logging() -> None:
 
 def build_sources(cfg: Config) -> list:
     return [
+        # Officielles / gouvernementales (gratuites, stables)
         FranceTravailSource(
             client_id=cfg.france_travail_client_id,
             client_secret=cfg.france_travail_client_secret,
         ),
+        LaBonneAlternanceSource(),
+        # Agrégateurs publics (gratuits, scraping)
         HelloWorkSource(),
         WTTJSource(),
         ApecSource(),
+        # APIs externes (gratuites avec clé)
+        AdzunaSource(app_id=cfg.adzuna_app_id, app_key=cfg.adzuna_app_key),
+        JoobleSource(api_key=cfg.jooble_api_key),
+        # API payante optionnelle (LinkedIn + Indeed + Glassdoor)
+        JSearchSource(rapidapi_key=cfg.jsearch_rapidapi_key),
+        # École 2600 (auth cookie)
         GrimpSource(cookie=cfg.grimp_cookie),
         BlueboxSource(cookie=cfg.bluebox_cookie),
     ]
